@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Tabliss Google Calendar</title>
+
+<title>Tabliss Calendar</title>
 
 <style>
     * {
@@ -25,6 +26,61 @@
     body {
         color: white;
     }
+
+    /*
+     * ============================================================
+     * PUBLIC APP INFORMATION
+     * ============================================================
+     *
+     * This section is visible without signing in.
+     * It provides Google with publicly accessible information
+     * about the application.
+     */
+
+    #app-info {
+        width: 100%;
+        max-width: 700px;
+        margin: 30px auto;
+        padding: 25px;
+        background: rgba(25, 35, 50, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+        color: white;
+        line-height: 1.5;
+    }
+
+    #app-info h1 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        font-size: 28px;
+    }
+
+    #app-info p {
+        font-size: 14px;
+        margin: 10px 0;
+    }
+
+    #app-info ul {
+        font-size: 14px;
+        padding-left: 25px;
+        margin: 10px 0;
+    }
+
+    #app-info a {
+        color: white;
+        text-decoration: underline;
+    }
+
+    #app-info a:hover {
+        opacity: 0.8;
+    }
+
+
+    /*
+     * ============================================================
+     * CALENDAR APPLICATION
+     * ============================================================
+     */
 
     #app {
         width: 100%;
@@ -147,7 +203,61 @@
 
 <body>
 
+<!--
+ * ============================================================
+ * PUBLIC INFORMATION
+ * ============================================================
+ *
+ * This content is intentionally available without Google login.
+ * Google OAuth verification requires the homepage to explain
+ * what the application does and identify the application name.
+ -->
+
+<div id="app-info">
+
+
+<h1>Tabliss Calendar</h1>
+
+<p>
+    Tabliss Calendar is a personal new-tab widget that displays
+    Google Calendar events and Google Tasks directly in Tabliss.
+</p>
+
+<p>
+    The application allows you to:
+</p>
+
+<ul>
+    <li>View today's Google Calendar events</li>
+    <li>View upcoming calendar events</li>
+    <li>View open Google Tasks</li>
+    <li>Mark Google Tasks as completed</li>
+    <li>Automatically refresh calendar and task information</li>
+</ul>
+
+<p>
+    Tabliss Calendar accesses your Google Calendar and Google Tasks
+    data only to provide these features. Your Google data is not
+    sold or shared with third parties.
+</p>
+
+<p>
+    <a href="/privacy.html" target="_blank">
+        Privacy Policy
+    </a>
+</p>
+
+
+</div>
+
+<!--
+ * ============================================================
+ * CALENDAR APPLICATION
+ * ============================================================
+ -->
+
 <div id="app">
+
 
 <div class="calendar-box">
 
@@ -157,9 +267,11 @@
     </div>
 
     <div id="login" style="display:none;">
+
         <button id="authorize-button">
             Sign in with Google
         </button>
+
     </div>
 
     <div id="content" style="display:none;">
@@ -174,9 +286,11 @@
         <div id="upcoming-events"></div>
 
         <div style="text-align:right; margin-top:15px;">
+
             <button id="signout-button">
                 Sign out
             </button>
+
         </div>
 
     </div>
@@ -184,6 +298,7 @@
     <div id="error" class="error"></div>
 
 </div>
+
 
 </div>
 
