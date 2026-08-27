@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Tabliss Google Calendar</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: 100%;
+            background: transparent;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            color: white;
+        }
+
+        #app {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .calendar-box {
+            background: rgba(25, 35, 50, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 10px;
+            padding: 18px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .date {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .status {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin: 18px 0 8px;
+            opacity: 0.75;
+        }
+
+        .event,
+        .task {
+            padding: 9px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .event:last-child,
+        .task:last-child {
+            border-bottom: none;
+        }
+
+        .event-time {
+            display: inline-block;
+            width: 75px;
+            opacity: 0.65;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        .event-title {
+            font-size: 14px;
+        }
+
+        .task {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .task input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .task-title {
+            font-size: 14px;
+        }
+
+        .empty {
+            opacity: 0.5;
+            font-size: 13px;
+            padding: 5px 0;
+        }
+
+        #login {
+            text-align: center;
+            padding: 20px;
+        }
+
+        button {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .error {
+            color: #ffb3b3;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="app">
+
+    <div class="calendar-box">
+
+        <div class="header">
+            <div class="date" id="current-date"></div>
+            <div class="status" id="status">Starting...</div>
+        </div>
+
+        <div id="login" style="display:none;">
+            <button id="authorize-button">
+                Sign in with Google
+            </button>
+        </div>
+
+        <div id="content" style="display:none;">
+
+            <div class="section-title">TODAY</div>
+            <div id="today-events"></div>
+
+            <div class="section-title">TASKS</div>
+            <div id="tasks"></div>
+
+            <div class="section-title">UPCOMING</div>
+            <div id="upcoming-events"></div>
+
+            <div style="text-align:right; margin-top:15px;">
+                <button id="signout-button">
+                    Sign out
+                </button>
+            </div>
+
+        </div>
+
+        <div id="error" class="error"></div>
+
+    </div>
+
+</div>
+
+<script src="https://accounts.google.com/gsi/client"></script>
+
+<script>
+/*
+ * ============================================================
+ * GOOGLE CONFIGURATION
+ * ============================================================
+ *
+ * Replace YOUR_CLIENT_ID with the OAuth Client ID you created
+ * in Google Cloud.
+ *
+ * DO NOT put a client secret here.
+ */
+
+const GOOGLE_CLIENT_ID =
+    "YOUR_CLIENT_ID.apps.googleusercontent.com";
+
+
+/*
+ * Google API scopes
+ */
+
+const SCOPES = [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/tasks"
+].join(" ");
+
+
+/*
+ * Google APIs
+ */
+
+const CALENDAR_API =
+    "https://www.googleapis.com/calendar/v3";
+
+const TASKS_API =
+    "https://tasks.googleapis.com/tasks/v1";
+
+
+let accessToken = null;
+
+
+/*
+ * ============================================================
+ * INITIALIZATION
+ * ============================================================
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    updateDate();
+
+    document
+        .getElementById("authorize-button")
+        .addEventListener("click", authorize);
+
+    document
+        .getElementById("signout-button")
+        .addEventListener("click", signOut);
+
+    initializeGoogle();
+
+});
+
+
+/*
+ * ============================================================
+ * DATE
+ * ============================================================
+ */
+
+function updateDate() {
+
+    const now = new Date();
+
+    document.getElementById("current-date").textContent =
+        now.toLocaleDateString(undefined, {
+            weekday: "long",
+            month: "long",
+            day: "numeric"
+        });
+}
+
+
+/*
+ * ============================================================
+ * GOOGLE AUTHENTICATION
+ * ============================================================
+ */
+
+let tokenClient;
+
+
+function initializeGoogle() {
+
+    if (
+        !GOOGLE_CLIENT_ID ||
+        GOOGLE_CLIENT_ID.startsWith("YOUR_")
+    ) {
+        showError(
+            "Google Client ID has not been configured yet."
+        );
+
+        document.getElementById("status").textContent =
+            "Configuration needed";
+
+        return;
+    }
+
+
+    tokenClient =
+        google.accounts.oauth2.initTokenClient({
+
+            client_id: GOOGLE_CLIENT_ID,
+
+            scope: SCOPES,
+
+            callback: (response) => {
+
+                if (response.error) {
+
+                    showError(
+                        JSON.stringify(response, null, 2)
+                    );
+
+                    return;
+                }
+
+                accessToken = response.access_token;
+
+                document.getElementById("login")
+                    .style.display = "none";
+
+                document.getElementById("content")
+                    .style.display = "block";
+
+                document.getElementById("status")
+                    .textContent = "Connected";
+
+                loadEverything();
+            }
+
+        });
+
+
+    document.getElementById("login")
+        .style.display = "block";
+
+    document.getElementById("status")
+        .textContent = "Not connected";
+}
+
+
+function authorize() {
+
+    if (!tokenClient) {
+        return;
+    }
+
+    tokenClient.requestAccessToken({
+        prompt: "consent"
+    });
+}
+
+
+function signOut() {
+
+    if (!accessToken) {
+        return;
+    }
+
+    google.accounts.oauth2.revoke(
+        accessToken,
+        () => {
+
+            accessToken = null;
+
+            document.getElementById("content")
+                .style.display = "none";
+
+            document.getElementById("login")
+                .style.display = "block";
+
+            document.getElementById("status")
+                .textContent = "Not connected";
+        }
+    );
+}
+
+
+/*
+ * ============================================================
+ * API REQUEST
+ * ============================================================
+ */
+
+async function apiRequest(url, options = {}) {
+
+    const response = await fetch(url, {
+
+        ...options,
+
+        headers: {
+            ...(options.headers || {}),
+            Authorization: `Bearer ${accessToken}`
+        }
+
+    });
+
+
+    if (!response.ok) {
+
+        const text = await response.text();
+
+        throw new Error(
+            `Google API error ${response.status}:\n${text}`
+        );
+    }
+
+
+    return response.json();
+}
+
+
+/*
+ * ============================================================
+ * LOAD EVERYTHING
+ * ============================================================
+ */
+
+async function loadEverything() {
+
+    try {
+
+        clearError();
+
+        await Promise.all([
+            loadCalendar(),
+            loadTasks()
+        ]);
+
+        document.getElementById("status")
+            .textContent =
+            "Updated " +
+            new Date().toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit"
+            });
+
+    } catch (error) {
+
+        console.error(error);
+
+        showError(error.message);
+
+    }
+}
+
+
+/*
+ * ============================================================
+ * GOOGLE CALENDAR
+ * ============================================================
+ */
+
+async function loadCalendar() {
+
+    const now = new Date();
+
+    const startOfToday =
+        new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate()
+        );
+
+    const endOfTomorrow =
+        new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() + 2
+        );
+
+
+    const url =
+        CALENDAR_API +
+        "/calendars/primary/events" +
+        "?timeMin=" +
+        encodeURIComponent(startOfToday.toISOString()) +
+        "&timeMax=" +
+        encodeURIComponent(endOfTomorrow.toISOString()) +
+        "&singleEvents=true" +
+        "&orderBy=startTime";
+
+
+    const data =
+        await apiRequest(url);
+
+
+    const events =
+        data.items || [];
+
+
+    const todayEvents = [];
+    const upcomingEvents = [];
+
+
+    events.forEach(event => {
+
+        const start =
+            event.start.dateTime ||
+            event.start.date;
+
+
+        if (!start) {
+            return;
+        }
+
+
+        const eventDate =
+            new Date(start);
+
+
+        if (
+            eventDate.getDate() === now.getDate() &&
+            eventDate.getMonth() === now.getMonth() &&
+            eventDate.getFullYear() === now.getFullYear()
+        ) {
+
+            todayEvents.push(event);
+
+        } else {
+
+            upcomingEvents.push(event);
+
+        }
+
+    });
+
+
+    renderEvents(
+        "today-events",
+        todayEvents
+    );
+
+
+    renderEvents(
+        "upcoming-events",
+        upcomingEvents
+    );
+}
+
+
+/*
+ * ============================================================
+ * RENDER CALENDAR EVENTS
+ * ============================================================
+ */
+
+function renderEvents(elementId, events) {
+
+    const container =
+        document.getElementById(elementId);
+
+
+    container.innerHTML = "";
+
+
+    if (!events.length) {
+
+        container.innerHTML =
+            '<div class="empty">No events</div>';
+
+        return;
+    }
+
+
+    events.forEach(event => {
+
+        const row =
+            document.createElement("div");
+
+        row.className = "event";
+
+
+        const time =
+            document.createElement("span");
+
+        time.className = "event-time";
+
+
+        if (event.start.dateTime) {
+
+            time.textContent =
+                new Date(
+                    event.start.dateTime
+                ).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit"
+                });
+
+        } else {
+
+            time.textContent = "All day";
+        }
+
+
+        const title =
+            document.createElement("span");
+
+        title.className = "event-title";
+
+        title.textContent =
+            event.summary || "(No title)";
+
+
+        row.appendChild(time);
+        row.appendChild(title);
+
+
+        if (event.htmlLink) {
+
+            row.style.cursor = "pointer";
+
+            row.addEventListener(
+                "click",
+                () => {
+                    window.open(
+                        event.htmlLink,
+                        "_blank"
+                    );
+                }
+            );
+        }
+
+
+        container.appendChild(row);
+
+    });
+}
+
+
+/*
+ * ============================================================
+ * GOOGLE TASKS
+ * ============================================================
+ */
+
+async function loadTasks() {
+
+    const listsUrl =
+        TASKS_API +
+        "/users/@me/lists";
+
+
+    const lists =
+        await apiRequest(listsUrl);
+
+
+    const allTasks = [];
+
+
+    for (const list of lists.items || []) {
+
+        const url =
+            TASKS_API +
+            "/lists/" +
+            encodeURIComponent(list.id) +
+            "/tasks" +
+            "?showCompleted=false" +
+            "&showHidden=false";
+
+
+        const data =
+            await apiRequest(url);
+
+
+        (data.items || []).forEach(task => {
+
+            task.taskListName =
+                list.title;
+
+            allTasks.push(task);
+
+        });
+
+    }
+
+
+    allTasks.sort((a, b) => {
+
+        const dateA =
+            a.due
+                ? new Date(a.due).getTime()
+                : Infinity;
+
+        const dateB =
+            b.due
+                ? new Date(b.due).getTime()
+                : Infinity;
+
+        return dateA - dateB;
+    });
+
+
+    renderTasks(allTasks);
+}
+
+
+/*
+ * ============================================================
+ * RENDER TASKS
+ * ============================================================
+ */
+
+function renderTasks(tasks) {
+
+    const container =
+        document.getElementById("tasks");
+
+
+    container.innerHTML = "";
+
+
+    if (!tasks.length) {
+
+        container.innerHTML =
+            '<div class="empty">No open tasks</div>';
+
+        return;
+    }
+
+
+    tasks.forEach(task => {
+
+        const row =
+            document.createElement("div");
+
+        row.className = "task";
+
+
+        const checkbox =
+            document.createElement("input");
+
+        checkbox.type = "checkbox";
+
+
+        checkbox.addEventListener(
+            "change",
+            () => completeTask(
+                task.taskListName,
+                task.id,
+                checkbox
+            )
+        );
+
+
+        const title =
+            document.createElement("span");
+
+        title.className = "task-title";
+
+        title.textContent =
+            task.title;
+
+
+        row.appendChild(checkbox);
+        row.appendChild(title);
+
+
+        container.appendChild(row);
+
+    });
+}
+
+
+/*
+ * ============================================================
+ * COMPLETE TASK
+ * ============================================================
+ */
+
+async function completeTask(
+    listName,
+    taskId,
+    checkbox
+) {
+
+    try {
+
+        /*
+         * We need the actual task-list ID.
+         * Reload the lists and locate it.
+         */
+
+        const lists =
+            await apiRequest(
+                TASKS_API +
+                "/users/@me/lists"
+            );
+
+
+        const list =
+            (lists.items || [])
+                .find(
+                    list =>
+                        list.title === listName
+                );
+
+
+        if (!list) {
+            throw new Error(
+                "Could not find task list."
+            );
+        }
+
+
+        const url =
+            TASKS_API +
+            "/lists/" +
+            encodeURIComponent(list.id) +
+            "/tasks/" +
+            encodeURIComponent(taskId);
+
+
+        await apiRequest(url, {
+
+            method: "PATCH",
+
+            headers: {
+                "Content-Type":
+                    "application/json"
+            },
+
+            body: JSON.stringify({
+                status: "completed"
+            })
+
+        });
+
+
+        await loadTasks();
+
+
+    } catch (error) {
+
+        checkbox.checked = false;
+
+        showError(error.message);
+    }
+}
+
+
+/*
+ * ============================================================
+ * ERROR HANDLING
+ * ============================================================
+ */
+
+function showError(message) {
+
+    document.getElementById("error")
+        .textContent = message;
+}
+
+
+function clearError() {
+
+    document.getElementById("error")
+        .textContent = "";
+}
+
+
+/*
+ * ============================================================
+ * AUTOMATIC REFRESH
+ * ============================================================
+ *
+ * CalWid uses a five-minute refresh.
+ */
+
+setInterval(() => {
+
+    if (accessToken) {
+        loadEverything();
+    }
+
+}, 5 * 60 * 1000);
+
+
+/*
+ * Update the displayed date every minute.
+ */
+
+setInterval(updateDate, 60 * 1000);
+
+</script>
+
+</body>
+</html>
